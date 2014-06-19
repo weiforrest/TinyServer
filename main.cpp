@@ -61,7 +61,9 @@ int main(int argc, char* argv[])
 
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     assert(listenfd >= 0);
- 
+	// debug used
+	int reuse = 1;
+	setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     int ret = 0;
     struct sockaddr_in address;
     bzero(&address, sizeof(address));
