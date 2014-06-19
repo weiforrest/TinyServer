@@ -6,7 +6,12 @@ TinyServer
 
 整个程序分为了几个模块：
 processpoll: 负责进程池的创建，运行，通信。
+
 fdwapper: 封装了epoll的操作。
+
 log: 负责日志处理。
+
 manager: worker进程对应一个manager，管理http_conn连接。
+
 http_conn: 对应一个http连接，处理http请求处理。
+

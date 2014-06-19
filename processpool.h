@@ -284,6 +284,7 @@ void processpool< M, C >::run_child()
 			   }
 		  }
 	 }
+	 
 	 delete manager;
 	 close(pipefd_read);
 	 close(m_epollfd);

@@ -104,20 +104,25 @@ RET_CODE mgr::process(int fd, OP_TYPE type)
 	case READ:{
 		RET_CODE res = connection->read();
 		switch(res){
-		case OK:{
-			log(LOG_DEBUG, __FILE__, __LINE__, "content read from client: %s", connection->m_read_buf);
-		}
-		case BUFFER_FULL:{
-			modfd(m_epollfd, fd, EPOLLOUT);
-			break;
-		}
-		case IOERR:
-		case CLOSED:{
-			free_conn(connection);
-			return CLOSED;
-		}
-		default:
-			break;
+		    case OK:{
+				log(LOG_DEBUG, __FILE__, __LINE__, "%s", "read context");
+				modfd(m_epollfd, fd, EPOLLOUT);
+			}
+		    case BUFFER_FULL:{
+				modfd(m_epollfd, fd, EPOLLOUT);
+				break;
+			}
+		    case IOERR:
+		    case CLOSED:{
+				free_conn(connection);
+				return CLOSED;
+			}
+		    case TRY_AGAIN:{
+				modfd(m_epollfd, fd, EPOLLIN);
+				break;
+			}
+		    default:
+				break;
 		}
 	}
 	case WRITE:{
@@ -127,6 +132,7 @@ RET_CODE mgr::process(int fd, OP_TYPE type)
 			modfd(m_epollfd, fd, EPOLLOUT);
 			break;
 		}
+		case OK:
 		case BUFFER_EMPTY:{
 			// 因为缓冲区满了，所以可能有没有读取完的数据，手动设置事件，继续读取
 			modfd(m_epollfd, fd, EPOLLIN);
