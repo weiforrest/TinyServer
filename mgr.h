@@ -3,11 +3,16 @@
 #define __TINYSERVER_MGR_H_
 
 #include <map>
+#include <list>
+#include <iterator>
 #include <arpa/inet.h>
 #include "fdwrapper.h"
 #include "http_conn.h"
 
 using std::map;
+using std::pair;
+/* using std::iterator; */
+using std::list;
 class mgr
 {
 public:
@@ -21,7 +26,7 @@ public:
 
 private:
     static int m_epollfd;
-    map<int, http_conn*> m_reserved;
+    list< pair<int, http_conn*> > m_reserved;
     map<int, http_conn*> m_used;
 	static const int m_conncnt = 10;
 };

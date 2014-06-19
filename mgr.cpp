@@ -34,19 +34,20 @@ mgr::mgr(int epollfd)
 			log(LOG_ERR, __FILE__, __LINE__, "%s", "new http_conn failure");
 			continue;
 		}
-		m_reserved.insert( pair<int, http_conn*>(-1, tmp));
+		m_reserved.push_back( pair<int, http_conn*>(i, tmp));
 	}
 }
 
 mgr::~mgr()
 {
-	map< int, http_conn* >::iterator it =  m_reserved.begin();
-	for(;it != m_reserved.end(); ++it){
-		delete it->second;
+	list< pair<int, http_conn*> >::iterator ita = m_reserved.begin();
+	for(;ita != m_reserved.end(); ++ita){
+		delete ita->second;
 	}
-	it = m_used.begin();
-	for(;it != m_used.end(); ++it){
-		delete it->second;
+
+	map< int, http_conn* >::iterator itb = m_used.begin();
+	for(;itb != m_used.end(); ++itb){
+		delete itb->second;
 	}
 }
 
@@ -67,9 +68,8 @@ http_conn* mgr::pick_conn(int cltfd )
 			return NULL;
 		}
     }else{
-		map< int, http_conn* >::iterator iter =  m_reserved.begin();
-		tmp = iter->second;
-		m_reserved.erase(iter);
+		tmp =  m_reserved.front().second;
+		m_reserved.pop_front();
 	}
     if(!tmp){
         log(LOG_ERR, __FILE__, __LINE__, "%s", "empty connection object");
@@ -89,7 +89,7 @@ void mgr::free_conn(http_conn* connection)
     closefd(m_epollfd, cltfd);
     m_used.erase(cltfd);
     connection->reset();
-    m_reserved.insert(pair< int, http_conn* >(-1, connection));
+    m_reserved.push_back(pair< int, http_conn* >(-1 , connection));
 }
 
 
