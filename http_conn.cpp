@@ -59,6 +59,7 @@ http_conn::LINE_STATUS http_conn::parse_line()
     }
     return LINE_OPEN;
 }
+
 http_conn::HTTP_CODE http_conn::parse_request_line(char* text)
 {
     m_url = strpbrk(text, " \t");
@@ -124,85 +125,11 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text)
     return NO_REQUEST;
 }
 
-bool http_conn::process_read()
-{
-    int bytes_read = 0;
-    while(true){
-		if(m_read_idx >= READ_BUFFER_SIZE){
-			log( LOG_ERR, __FILE__, __LINE__, "%s", "the  read buffer is full" );
-			if(bytes_read == 0){
-				return false;
-			}else{
-				return true;
-			}
-		}
-        bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
-        if (bytes_read == -1){
-            if(errno == EAGAIN || errno == EWOULDBLOCK){
-                break;
-            }
-			log(LOG_ERR, __FILE__, __LINE__, "recv error = %s",strerror(errno) );
-            return false;
-        }
-        else if (bytes_read == 0){
-            return false;
-        }
-
-        m_read_idx += bytes_read;
-    }
-    return true;
-}
-
 http_conn::HTTP_CODE http_conn::parse_content(char* text)
 {
     if (m_read_idx >= (m_content_length + m_checked_idx)){
         text[ m_content_length ] = '\0';
         return GET_REQUEST;
-    }
-
-    return NO_REQUEST;
-}
-
-http_conn::HTTP_CODE http_conn::process()
-{
-    LINE_STATUS line_status = LINE_OK;
-    HTTP_CODE ret = NO_REQUEST;
-    char* text = 0;
-	
-    while (((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK ))
-		   || ((line_status = parse_line()) == LINE_OK)){
-        text = get_line();
-        m_start_line = m_checked_idx;
-		log(LOG_DEBUG, __FILE__, __LINE__,"got 1 http line: %s\n", text);
-
-        switch (m_check_state){
-		case CHECK_STATE_REQUESTLINE:{
-                ret = parse_request_line(text);
-                if (ret == BAD_REQUEST){
-                    return BAD_REQUEST;
-                }
-                break;
-		}
-		case CHECK_STATE_HEADER:{
-			ret = parse_headers(text);
-			if (ret == BAD_REQUEST){
-                    return BAD_REQUEST;
-			}else if (ret == GET_REQUEST){
-                    return do_request();
-			}
-			break;
-		}
-		case CHECK_STATE_CONTENT:{
-			ret = parse_content(text);
-			if (ret == GET_REQUEST){
-                    return do_request();
-			}
-			line_status = LINE_OPEN;
-			break;
-		}
-		default:
-                return INTERNAL_ERROR;
-        }
     }
 
     return NO_REQUEST;
@@ -236,34 +163,6 @@ void http_conn::unmap()
     if(m_file_address){
         munmap(m_file_address, m_file_stat.st_size);
         m_file_address = 0;
-    }
-}
-
-RET_CODE http_conn::write()
-{
-    int temp = 0;
-    int bytes_have_send = 0;
-    int bytes_to_send = m_write_idx;
-    if (bytes_to_send == 0){
-        return BUFFER_EMPTY;
-    }
-
-    while(1){
-        temp = writev(m_sockfd, m_iv, m_iv_count);
-        if (temp <= -1){
-            if(errno == EAGAIN){
-                return TRY_AGAIN;
-            }
-            unmap();
-            return CLOSED;
-        }
-
-        bytes_to_send -= temp;
-        bytes_have_send += temp;
-        if (bytes_to_send <= bytes_have_send){
-            unmap();
-			return OK;
-        }
     }
 }
 
@@ -313,6 +212,125 @@ bool http_conn::add_blank_line()
 bool http_conn::add_content(const char* content)
 {
     return add_response("%s", content);
+}
+
+
+RET_CODE http_conn::read()
+{
+	if(process_read()){
+		HTTP_CODE read_ret = process();
+		if (read_ret == NO_REQUEST){
+			return TRY_AGAIN;
+		}
+		
+		bool write_ret = process_write(read_ret);
+		if (! write_ret){
+			return CLOSED;			
+		}
+		return OK;
+	}
+	return NOTHING;
+}
+
+bool http_conn::process_read()
+{
+    int bytes_read = 0;
+    while(true){
+		if(m_read_idx >= READ_BUFFER_SIZE){
+			log( LOG_ERR, __FILE__, __LINE__, "%s", "the  read buffer is full" );
+			if(bytes_read == 0){
+				return false;
+			}else{
+				return true;
+			}
+		}
+        bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
+        if (bytes_read == -1){
+            if(errno == EAGAIN || errno == EWOULDBLOCK){
+                break;
+            }
+			log(LOG_ERR, __FILE__, __LINE__, "recv error = %s",strerror(errno) );
+            return false;
+        }
+        else if (bytes_read == 0){
+            return false;
+        }
+
+        m_read_idx += bytes_read;
+    }
+    return true;
+}
+http_conn::HTTP_CODE http_conn::process()
+{
+    LINE_STATUS line_status = LINE_OK;
+    HTTP_CODE ret = NO_REQUEST;
+    char* text = 0;
+	
+    while (((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK ))
+		   || ((line_status = parse_line()) == LINE_OK)){
+        text = get_line();
+        m_start_line = m_checked_idx;
+		log(LOG_DEBUG, __FILE__, __LINE__,"got 1 http line: %s\n", text);
+
+        switch (m_check_state){
+		case CHECK_STATE_REQUESTLINE:{
+                ret = parse_request_line(text);
+                if (ret == BAD_REQUEST){
+                    return BAD_REQUEST;
+                }
+                break;
+		}
+		case CHECK_STATE_HEADER:{
+			ret = parse_headers(text);
+			if (ret == BAD_REQUEST){
+                    return BAD_REQUEST;
+			}else if (ret == GET_REQUEST){
+                    return do_request();
+			}
+			break;
+		}
+		case CHECK_STATE_CONTENT:{
+			ret = parse_content(text);
+			if (ret == GET_REQUEST){
+                    return do_request();
+			}
+			line_status = LINE_OPEN;
+			break;
+		}
+		default:
+                return INTERNAL_ERROR;
+        }
+    }
+
+    return NO_REQUEST;
+}
+
+RET_CODE http_conn::write()
+{
+    int temp = 0;
+    int bytes_have_send = 0;
+    int bytes_to_send = m_write_idx;
+    if (bytes_to_send == 0){
+        return BUFFER_EMPTY;
+    }
+
+    while(1){
+        temp = writev(m_sockfd, m_iv, m_iv_count);
+        if (temp <= -1){
+            if(errno == EAGAIN){
+                return TRY_AGAIN;
+            }
+            unmap();
+            return CLOSED;
+        }
+
+        bytes_to_send -= temp;
+        bytes_have_send += temp;
+        if (bytes_to_send <= bytes_have_send){
+            unmap();
+			return CLOSED;
+        }
+    }
 }
 
 bool http_conn::process_write(HTTP_CODE ret)
@@ -377,21 +395,3 @@ bool http_conn::process_write(HTTP_CODE ret)
     m_iv_count = 1;
     return true;
 }
-
-RET_CODE http_conn::read()
-{
-	if(process_read()){
-		HTTP_CODE read_ret = process();
-		if (read_ret == NO_REQUEST){
-			return TRY_AGAIN;
-		}
-		
-		bool write_ret = process_write(read_ret);
-		if (! write_ret){
-			return CLOSED;			
-		}
-		return OK;
-	}
-	return NOTHING;
-}
-

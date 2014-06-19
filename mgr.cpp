@@ -106,7 +106,6 @@ RET_CODE mgr::process(int fd, OP_TYPE type)
 		switch(res){
 		    case OK:{
 				log(LOG_DEBUG, __FILE__, __LINE__, "%s", "read context");
-				modfd(m_epollfd, fd, EPOLLOUT);
 			}
 		    case BUFFER_FULL:{
 				modfd(m_epollfd, fd, EPOLLOUT);
@@ -124,6 +123,7 @@ RET_CODE mgr::process(int fd, OP_TYPE type)
 		    default:
 				break;
 		}
+		break;
 	}
 	case WRITE:{
 		RET_CODE res = connection->write();
